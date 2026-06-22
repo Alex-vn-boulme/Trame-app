@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Pia app icon — cream paper + accent sparkle, matches design system §4 -->
+  <rect width="512" height="512" rx="112" fill="#f5f2ea"/>
+  <circle cx="256" cy="256" r="148" fill="#c96442"/>
+  <!-- Big sparkle (the Pia avatar mark) -->
+  <g fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 158 L284 232 L358 256 L284 280 L256 354 L228 280 L154 256 L228 232 Z"/>
+    <path d="M348 296 L361 330 L395 343 L361 356 L348 390 L335 356 L301 343 L335 330 Z"/>
+  </g>
+</svg>

@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* ─── Pia design tokens ──────────────────────────────────────────────────
+ * Palettes mapped to CSS variables. Switched at runtime via
+ * <html data-theme="cream|sage|rose|dark|night">.
+ * cream = default light palette.
+ * dark  = night-time but not AMOLED.
+ * night = AMOLED, forced on /night/* routes regardless of user pref.
+ */
+
+:root,
+[data-theme="cream"] {
+  --bg: #f5f2ea;
+  --surface: #faf8f3;
+  --card: #ffffff;
+  --ink: #29261b;
+  --sub: #6e6757;
+  --hair: rgba(41, 38, 27, 0.08);
+  --soft: #efe9dc;
+  --accent: #c96442;
+  --accent-soft: rgba(201, 100, 66, 0.1);
+  --good: #5a7d4f;
+  --warn: #b67a2c;
+}
+
+[data-theme="sage"] {
+  --bg: #eef0ea;
+  --surface: #f6f7f3;
+  --card: #ffffff;
+  --ink: #22271f;
+  --sub: #697060;
+  --hair: rgba(34, 39, 31, 0.08);
+  --soft: #e6e9df;
+  --accent: #6b8a5a;
+  --accent-soft: rgba(107, 138, 90, 0.12);
+  --good: #6b8a5a;
+  --warn: #b67a2c;
+}
+
+[data-theme="rose"] {
+  --bg: #f3ecea;
+  --surface: #faf4f2;
+  --card: #ffffff;
+  --ink: #2a2422;
+  --sub: #74675f;
+  --hair: rgba(42, 36, 34, 0.08);
+  --soft: #ebe1dc;
+  --accent: #b15c6e;
+  --accent-soft: rgba(177, 92, 110, 0.12);
+  --good: #5a7d4f;
+  --warn: #b67a2c;
+}
+
+[data-theme="dark"] {
+  --bg: #15140f;
+  --surface: #1c1a14;
+  --card: #222019;
+  --ink: #f3efe4;
+  --sub: #8a8474;
+  --hair: rgba(243, 239, 228, 0.08);
+  --soft: #2a2720;
+  --accent: #e89077;
+  --accent-soft: rgba(232, 144, 119, 0.15);
+  --good: #8aa97c;
+  --warn: #d6a25b;
+}
+
+[data-theme="night"] {
+  --bg: #0a0a07;
+  --surface: #13110d;
+  --card: #1a1812;
+  --ink: #f3efe4;
+  --sub: #8a8474;
+  --hair: rgba(243, 239, 228, 0.06);
+  --soft: #1f1d17;
+  --accent: #e89077;
+  --accent-soft: rgba(232, 144, 119, 0.15);
+  --good: #8aa97c;
+  --warn: #d6a25b;
+}
+
+/* Map CSS variables into Tailwind v4 theme so utilities like
+ * `bg-bg`, `text-ink`, `border-hair`, `text-accent` just work. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-sub: var(--sub);
+  --color-hair: var(--hair);
+  --color-soft: var(--soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+
+  --font-serif: var(--font-source-serif), ui-serif, Georgia, serif;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* iOS Safari viewport fix — prefer dvh over vh */
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Better tap defaults on touch devices */
+button {
+  touch-action: manipulation;
+}
+
+/* Hide scrollbars for horizontal scroll-snap rows (chips, etc.) */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
