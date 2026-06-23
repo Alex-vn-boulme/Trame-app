@@ -19,16 +19,18 @@ export function relativeFr(target: Date, now: Date = new Date()): string {
   return RTF.format(Math.round(sec / (86_400 * 365)), "year");
 }
 
+const TZ = "Europe/Paris";
+
 export function hhmm(d: Date): string {
-  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
 }
 
 export function dateFr(d: Date): string {
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", timeZone: TZ });
 }
 
 export function dateLongFr(d: Date): string {
-  return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: TZ });
 }
 
 export function durationFr(ms: number): string {

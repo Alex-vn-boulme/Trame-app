@@ -29,7 +29,7 @@ export function extractFields(type: EntryType, payload: unknown): Field[] {
       if (typeof p.motif === "string") fields.push({ k: "motif", v: p.motif });
       if (typeof p.praticien === "string") fields.push({ k: "qui", v: p.praticien });
       if (typeof p.lieu === "string") fields.push({ k: "où", v: p.lieu });
-      if (typeof p.date === "string") fields.push({ k: "quand", v: new Date(p.date).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) });
+      if (typeof p.date === "string") fields.push({ k: "quand", v: new Date(p.date).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }) });
       break;
     }
     case "course": {

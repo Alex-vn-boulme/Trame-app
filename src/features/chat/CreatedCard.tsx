@@ -1,36 +1,55 @@
+import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/design/icons";
 import type { EntryType } from "@/domain/types";
 import { CATEGORY_META } from "./categoryMeta";
 import type { Field } from "./extractFields";
 
-/**
- * The inline card Pia drops into the chat each time it classifies a new
- * entry. Brief A1 spec: badge catégorie + champs extraits + footer "pour X"
- * with Modifier / Voir → actions.
- *
- * `soft` variant = tinted background using the category color at 10% — used
- * when the entry is still pending some clarification (e.g. RDV à programmer).
- */
+/** Types where it makes sense to assign a person ("pour Thomas"). Other
+ *  types (biberon, change, sieste…) are about the child by default. */
+const ASSIGNABLE: ReadonlySet<EntryType> = new Set(["rdv", "course", "admin"]);
+
+/** Each entry type lands in a default view — used for the "Voir →" link. */
+function viewFor(type: EntryType): string {
+  switch (type) {
+    case "course":   return "/courses";
+    case "rdv":      return "/todo";
+    case "admin":    return "/todo";
+    case "biberon":
+    case "change":
+    case "sieste":   return "/tracking";
+    case "medic":    return "/meds";
+    case "symptome": return "/vigilance";
+    case "jalon":
+    case "lecture":  return "/logbook";
+    case "note":     return "/recall";
+  }
+}
+
 export function CreatedCard({
+  entryId,
   type,
   title,
   fields,
-  who,
+  creator,
+  assignee,
   soft = false,
-  onEdit,
-  onOpen,
 }: {
+  entryId?: string;
   type: EntryType;
   title: string;
   fields?: Field[];
-  /** Initial of the parent who created the entry. */
-  who?: string;
+  /** Display info for the parent who created the entry. */
+  creator?: { initial: string; name?: string | null; color?: string | null };
+  /** Display info for the parent the entry is assigned to. Only used on
+   *  assignable types — falsy → "à assigner" prompt on those types. */
+  assignee?: { initial: string; name?: string | null; color?: string | null } | null;
   soft?: boolean;
-  onEdit?: () => void;
-  onOpen?: () => void;
 }) {
   const meta = CATEGORY_META[type];
+  const showAssign = ASSIGNABLE.has(type);
+  const viewHref = entryId ? `${viewFor(type)}#entry-${entryId}` : viewFor(type);
+
   return (
     <div
       className="flex max-w-[88%] flex-col gap-1.5 self-start rounded-[14px]"
@@ -40,7 +59,6 @@ export function CreatedCard({
         padding: "10px 12px",
       }}
     >
-      {/* Header — badge + check */}
       <div className="flex items-center gap-1.5">
         <span
           className="inline-flex items-center gap-[5px] rounded-full"
@@ -62,7 +80,6 @@ export function CreatedCard({
         <Icon name="check" size={12} strokeWidth={2.2} className="text-good" />
       </div>
 
-      {/* Title */}
       <p
         className="font-serif text-[15px] leading-[1.25] text-ink"
         style={{ letterSpacing: "-0.01em" }}
@@ -70,7 +87,6 @@ export function CreatedCard({
         {title}
       </p>
 
-      {/* Extracted fields */}
       {fields && fields.length > 0 && (
         <div className="mt-0.5 flex flex-wrap gap-1">
           {fields.map((f, i) => (
@@ -86,41 +102,36 @@ export function CreatedCard({
         </div>
       )}
 
-      {/* Footer — author + actions */}
       <div
         className="mt-1 flex items-center gap-1.5"
         style={{ paddingTop: 6, borderTop: "0.5px solid var(--hair)" }}
       >
-        {who && (
-          <>
-            <Avatar
-              who={who === "T" ? "T" : "L"}
-              size={14}
-            />
+        {creator && (
+          <span className="inline-flex items-center gap-1">
+            <Avatar initial={creator.initial} color={creator.color ?? undefined} size={14} />
             <span className="font-sans text-[11px] text-sub">
-              pour {who === "T" ? "Thomas" : "Léa"}
+              par {creator.name ?? creator.initial}
             </span>
-          </>
+          </span>
         )}
-        <div className="ml-auto flex gap-2">
-          {onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="font-sans text-[11.5px] text-sub"
-            >
-              Modifier
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onOpen}
-            className="font-sans text-[11.5px] font-semibold"
-            style={{ color: meta.color }}
-          >
-            Voir →
-          </button>
-        </div>
+
+        {showAssign && (
+          <span className="font-sans text-[11px] text-sub">
+            {assignee ? (
+              <>· pour <span className="font-medium text-ink">{assignee.name ?? assignee.initial}</span></>
+            ) : (
+              <Link href={viewHref} className="text-accent">· à assigner</Link>
+            )}
+          </span>
+        )}
+
+        <Link
+          href={viewHref}
+          className="ml-auto font-sans text-[11.5px] font-semibold"
+          style={{ color: meta.color }}
+        >
+          Voir →
+        </Link>
       </div>
     </div>
   );

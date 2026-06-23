@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Avatar, AvatarStack } from "@/components/Avatar";
+import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/design/icons";
 import { Pill } from "@/components/Pill";
 import { Card } from "@/components/Card";
@@ -19,7 +19,9 @@ export const dynamic = "force-dynamic";
  * "Tout à faire · partagé" par catégorie + "Pia propose · aujourd'hui".
  */
 export default async function DashboardPage() {
-  const { supabase, householdId, myInitial } = await loadView();
+  const { supabase, householdId, userId, members, memberByUserId } = await loadView();
+  const me = memberByUserId.get(userId);
+  const greetingName = me?.name?.split(/[ .]/)[0] ?? me?.initial ?? "";
 
   // Child (for stage in header).
   const { data: child } = await supabase
@@ -76,12 +78,6 @@ export default async function DashboardPage() {
   const todayBiberon = (todayEntries ?? []).filter((e) => e.type === "biberon").length;
   const todayChange = (todayEntries ?? []).filter((e) => e.type === "change").length;
 
-  // Members in the household (for the AvatarStack).
-  const { data: members } = await supabase
-    .from("household_members")
-    .select("initial")
-    .eq("household_id", householdId);
-  const initials = (members ?? []).map((m) => (m.initial === "T" ? "T" : "L")) as ("L" | "T")[];
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg pb-32">
@@ -97,9 +93,15 @@ export default async function DashboardPage() {
         </p>
         <div className="mt-2 flex items-start justify-between gap-3">
           <h1 className="font-serif text-[28px] leading-[1.05] tracking-[-0.02em] text-ink">
-            Bonjour{myInitial === "T" ? " Thomas" : " Léa"}.
+            Bonjour{greetingName ? ` ${greetingName}` : ""}.
           </h1>
-          <AvatarStack list={initials.length ? initials : ["L", "T"]} size={26} />
+          <span className="inline-flex">
+            {members.map((m, i) => (
+              <span key={m.userId} style={{ marginLeft: i ? -9 : 0 }}>
+                <Avatar initial={m.initial} color={m.color ?? undefined} size={26} ring />
+              </span>
+            ))}
+          </span>
         </div>
         <p className="mt-1 font-sans text-[12.5px] text-sub">{stageLabel}</p>
       </header>
@@ -231,11 +233,14 @@ export default async function DashboardPage() {
                 <EntryRow
                   key={e.id}
                   id={e.id}
+                  type={e.type as EntryType}
                   title={entryTitle(e.type, e.payload)}
                   meta={CATEGORY_META[e.type as EntryType].label}
-                  who={typeof e.who === "string" ? e.who : undefined}
+                  payload={(e.payload as Record<string, unknown>) ?? {}}
                   status={e.status}
                   proposed
+                  creator={typeof e.who === "string" ? memberByUserId.get(e.who) ?? null : null}
+                  members={members}
                 />
               ))}
             {(openEntries ?? []).filter((e) => e.type === "note" || e.type === "admin").length === 0 && (

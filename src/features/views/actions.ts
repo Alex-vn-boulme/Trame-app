@@ -6,10 +6,14 @@ import { createClient } from "@/lib/supabase/server";
 
 const StatusSchema = z.enum(["open", "done", "snoozed", "ignored"]);
 
-/**
- * Server Action — toggle an entry's status.
- * Used by Todo checkboxes, Courses "achetée" markers, Pia proposals.
- */
+function revalidateViews() {
+  revalidatePath("/todo");
+  revalidatePath("/courses");
+  revalidatePath("/dashboard");
+  revalidatePath("/tracking");
+  revalidatePath("/chat");
+}
+
 export async function setEntryStatus(entryId: string, status: z.infer<typeof StatusSchema>) {
   const parsed = StatusSchema.safeParse(status);
   if (!parsed.success) throw new Error("invalid status");
@@ -31,7 +35,91 @@ export async function setEntryStatus(entryId: string, status: z.infer<typeof Sta
     throw new Error(error.message);
   }
 
-  revalidatePath("/todo");
-  revalidatePath("/courses");
-  revalidatePath("/dashboard");
+  revalidateViews();
+}
+
+/** Assign an entry to a household member (or unassign with userId=null). */
+export async function setEntryAssignee(entryId: string, userId: string | null) {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) throw new Error("unauthorized");
+
+  if (userId) {
+    // Verify the target user is in the same household as the entry.
+    const { data: entry } = await supabase
+      .from("entries")
+      .select("household_id")
+      .eq("id", entryId)
+      .maybeSingle();
+    if (!entry) throw new Error("entry not found");
+
+    const { data: member } = await supabase
+      .from("household_members")
+      .select("user_id")
+      .eq("household_id", entry.household_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!member) throw new Error("user not in household");
+  }
+
+  const { error } = await supabase
+    .from("entries")
+    .update({ assigned_to: userId })
+    .eq("id", entryId);
+
+  if (error) {
+    console.error("[setEntryAssignee]", error);
+    throw new Error(error.message);
+  }
+
+  revalidateViews();
+}
+
+/** Merge-patch the JSONB payload of an entry. Pass `null` for a key to delete it. */
+export async function updateEntryPayload(
+  entryId: string,
+  patch: Record<string, string | number | null>,
+) {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) throw new Error("unauthorized");
+
+  const { data: current, error: readErr } = await supabase
+    .from("entries")
+    .select("payload")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (readErr || !current) throw new Error(readErr?.message ?? "entry not found");
+
+  const merged: Record<string, unknown> = { ...(current.payload as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null || v === "") delete merged[k];
+    else merged[k] = v;
+  }
+
+  const { error } = await supabase
+    .from("entries")
+    .update({ payload: merged })
+    .eq("id", entryId);
+
+  if (error) {
+    console.error("[updateEntryPayload]", error);
+    throw new Error(error.message);
+  }
+
+  revalidateViews();
+}
+
+/** Hard-delete an entry. RLS already restricts to household members. */
+export async function deleteEntry(entryId: string) {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) throw new Error("unauthorized");
+
+  const { error } = await supabase.from("entries").delete().eq("id", entryId);
+  if (error) {
+    console.error("[deleteEntry]", error);
+    throw new Error(error.message);
+  }
+  revalidateViews();
 }

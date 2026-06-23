@@ -143,50 +143,167 @@ export async function POST(request: Request) {
 
     console.log("[pia/extract] LLM output", JSON.stringify(extraction, null, 2));
 
-    // ── 5. RAG guard: validate every recommendation_id exists ────────────
-    const recIds = Array.from(
-      new Set(
-        extraction.entries
-          .map((e) => e.recommendationId)
-          .filter((id): id is string => typeof id === "string" && id.length > 0),
-      ),
-    );
-    if (recIds.length > 0) {
-      const { data: validRecs } = await supabase
-        .from("recommendations")
-        .select("id")
-        .in("id", recIds);
-      const validSet = new Set((validRecs ?? []).map((r) => r.id));
-      // Strip any hallucinated id rather than failing the whole request.
-      extraction.entries = extraction.entries.map((e) =>
-        e.recommendationId && !validSet.has(e.recommendationId)
-          ? { ...e, recommendationId: null }
-          : e,
-      );
+    const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
+
+    // ── 5a. Resolve free-text `assignee` → user_id via household_members.
+    //    LLM gives "Thomas" / "Léa" / "moi" — we map to a real user_id.
+    const { data: hmRows } = await admin
+      .from("household_members")
+      .select("user_id, initial, display_name")
+      .eq("household_id", householdId);
+    // Build label → user_id with multiple aliases per member:
+    //  - exact display_name ("alexandre.boulme")
+    //  - first name token ("alexandre", "boulme")
+    //  - prefixes of first name (down to 3 chars) so "alex" matches "alexandre"
+    //  - initial ("A")
+    const memberByLabel = new Map<string, string>();
+    function add(label: string | null | undefined, id: string) {
+      if (!label) return;
+      memberByLabel.set(label.toLowerCase().trim(), id);
+    }
+    for (const m of hmRows ?? []) {
+      const id = m.user_id;
+      add(m.initial, id);
+      add(m.display_name, id);
+      if (m.display_name) {
+        for (const token of m.display_name.split(/[.\s_-]+/).filter(Boolean)) {
+          add(token, id);
+          // also register all prefixes ≥ 3 chars ("alex" → "alexandre")
+          for (let len = Math.min(token.length, 8); len >= 3; len--) {
+            add(token.slice(0, len), id);
+          }
+        }
+      }
+    }
+    function resolveAssignee(name: string | undefined): string | null {
+      if (!name) return null;
+      const norm = name.toLowerCase().trim();
+      if (norm === "moi" || norm === "je" || norm === "moi-même") return userId;
+      return memberByLabel.get(norm) ?? null;
     }
 
+    // ── 5b. Recommendation linking is deferred (LLM schema would exceed
+    //    Anthropic's 24-optional-fields cap); a follow-up pass against the
+    //    `recommendations` table can backfill matches.
+
     // ── 6. Insert assistant message + entries ────────────────────────────
-    const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
 
     const source: "vocal" | "text" = audio instanceof File ? "vocal" : "text";
     const entryRows = extraction.entries
       .filter((e) => ENTRY_TYPES.includes(e.type))
-      .map((e) => ({
-        household_id: householdId,
-        child_id: e.childId ?? ctx.childId,
-        type: e.type,
-        payload: e.payload,
-        who: userId,
-        source,
-        confidence: e.confidence,
-        recommendation_id: e.recommendationId ?? null,
-      }));
+      .map((e) => {
+        // Strip `assignee` out of payload before insert — it's not a real
+        // payload field, just a transport hint from the LLM.
+        const rawPayload = (e.payload ?? {}) as Record<string, unknown>;
+        const { assignee, ...cleanPayload } = rawPayload;
+        const assignedTo = resolveAssignee(typeof assignee === "string" ? assignee : undefined);
+
+        // Per-type defaults — fill in sensible values the LLM doesn't dictate.
+        if (e.type === "course" && typeof cleanPayload.qty !== "number") {
+          cleanPayload.qty = 1;
+        }
+
+        return {
+          household_id: householdId,
+          child_id: ctx.childId,
+          type: e.type,
+          payload: cleanPayload,
+          who: userId,
+          assigned_to: assignedTo,
+          source,
+          confidence: e.confidence,
+          recommendation_id: null,
+        };
+      });
+
+    // ── 6b. Duplicate guard ──────────────────────────────────────────────
+    // Time-bearing types: skip if same type within ±WINDOW_MIN minutes.
+    // Courses: skip if an OPEN course with the same item (case-insensitive)
+    // already exists. Lets the parent re-dictate without spamming the list.
+    type RowToInsert = (typeof entryRows)[number];
+    const TIME_KEYS: Partial<Record<RowToInsert["type"], { key: string; windowMin: number }>> = {
+      biberon: { key: "takenAt",   windowMin: 15 },
+      change:  { key: "changedAt", windowMin: 10 },
+      sieste:  { key: "startAt",   windowMin: 30 },
+      medic:   { key: "takenAt",   windowMin: 30 },
+      rdv:     { key: "date",      windowMin: 60 },
+    };
+
+    function normItem(s: unknown): string {
+      return typeof s === "string" ? s.toLowerCase().replace(/\s+/g, " ").trim() : "";
+    }
+
+    // Pre-fetch open courses once (cheaper than one query per LLM-emitted course).
+    const courseNorms = entryRows
+      .filter((r) => r.type === "course")
+      .map((r) => normItem((r.payload as Record<string, unknown>).item))
+      .filter(Boolean);
+    const existingOpenCourseItems = new Set<string>();
+    if (courseNorms.length > 0) {
+      const { data: openCourses } = await admin
+        .from("entries")
+        .select("payload")
+        .eq("household_id", householdId)
+        .eq("type", "course")
+        .eq("status", "open");
+      for (const c of openCourses ?? []) {
+        const item = normItem((c.payload as Record<string, unknown> | null)?.item);
+        if (item) existingOpenCourseItems.add(item);
+      }
+    }
+
+    const skippedDuplicates: string[] = [];
+    const rowsToInsert: RowToInsert[] = [];
+    for (const row of entryRows) {
+      // Course dedup by item name.
+      if (row.type === "course") {
+        const item = normItem((row.payload as Record<string, unknown>).item);
+        if (item && existingOpenCourseItems.has(item)) {
+          skippedDuplicates.push(`course:${item}`);
+          continue;
+        }
+        if (item) existingOpenCourseItems.add(item); // also dedupe within this batch
+        rowsToInsert.push(row);
+        continue;
+      }
+      // Time dedup for the other types.
+      const cfg = TIME_KEYS[row.type];
+      const ts = cfg ? (row.payload as Record<string, unknown>)[cfg.key] : undefined;
+      if (!cfg || typeof ts !== "string") {
+        rowsToInsert.push(row);
+        continue;
+      }
+      const t = new Date(ts).getTime();
+      if (isNaN(t)) {
+        rowsToInsert.push(row);
+        continue;
+      }
+      const lo = new Date(t - cfg.windowMin * 60_000).toISOString();
+      const hi = new Date(t + cfg.windowMin * 60_000).toISOString();
+      const { data: near } = await admin
+        .from("entries")
+        .select(`id, payload->>${cfg.key} as ts`)
+        .eq("household_id", householdId)
+        .eq("type", row.type)
+        .neq("status", "ignored")
+        .gte(`payload->>${cfg.key}`, lo)
+        .lte(`payload->>${cfg.key}`, hi)
+        .limit(1);
+      if ((near ?? []).length > 0) {
+        skippedDuplicates.push(`${row.type}@${ts}`);
+        continue;
+      }
+      rowsToInsert.push(row);
+    }
+    if (skippedDuplicates.length > 0) {
+      console.log("[pia/extract] skipped near-duplicates", skippedDuplicates);
+    }
 
     let insertedIds: string[] = [];
-    if (entryRows.length > 0) {
+    if (rowsToInsert.length > 0) {
       const { data: inserted, error: insErr } = await admin
         .from("entries")
-        .insert(entryRows)
+        .insert(rowsToInsert)
         .select("id");
       if (insErr) {
         console.error("[pia/extract] entries insert failed", insErr);
@@ -195,12 +312,18 @@ export async function POST(request: Request) {
       }
     }
 
+    const dupNote =
+      skippedDuplicates.length > 0
+        ? ` (déjà noté il y a peu — j'ignore le doublon)`
+        : "";
+    const finalReply = extraction.assistantReply + dupNote;
+
     const { data: piaMsg } = await supabase
       .from("messages")
       .insert({
         household_id: householdId,
         role: "assistant",
-        text: extraction.assistantReply,
+        text: finalReply,
         entries_created: insertedIds,
       })
       .select("id, created_at")
@@ -210,8 +333,14 @@ export async function POST(request: Request) {
       userMessageId: userMsg.id,
       transcribedText,
       assistantMessageId: piaMsg?.id ?? null,
-      assistantReply: extraction.assistantReply,
-      entries: extraction.entries,
+      assistantReply: finalReply,
+      entries: rowsToInsert.map((r) => ({
+        type: r.type,
+        payload: r.payload,
+        confidence: r.confidence,
+        recommendationId: r.recommendation_id,
+        assignedTo: r.assigned_to,
+      })),
       entryIds: insertedIds,
     });
   } catch (err) {

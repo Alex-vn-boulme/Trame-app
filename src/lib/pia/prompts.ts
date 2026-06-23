@@ -39,17 +39,22 @@ tu en extrais 0..n entrées structurées dans le bon type.
 
 Types possibles et champs de payload attendus (camelCase strict) :
 
-- rdv       : motif (REQUIS si dicté — "échographie", "vaccin", "pédiatre"…), praticien?, lieu?, date? (ISO 8601 complète, ex "2026-06-25T13:30:00Z"), durationMin?
-- course    : item (REQUIS, nom de l'article tel que dicté), qty?, store?, priceEstimate?, urgency? ("low"|"normal"|"high")
-- biberon   : volumeMl?, takenAt? (ISO), durationMin?, refused? (bool)
-- change    : kind ("pipi"|"selle"|"mixte"), aspect?, changedAt? (ISO)
-- sieste    : startAt? (ISO), endAt? (ISO), place? ("lit"|"cododo"|"poussette"|"voiture"|"autre")
-- medic     : name (REQUIS), doseMg?, doseMl?, takenAt? (ISO), nextAllowedAt? (ISO)
-- admin     : kind (REQUIS, ex "déclaration naissance"), dueDate? (ISO)
+- rdv       : motif? ("échographie", "vaccin", "pédiatre"…), date? (ISO), assignee?
+- course    : item (REQUIS), qty?, assignee?
+- biberon   : volumeMl?, takenAt? (ISO)
+- change    : kind ("pipi"|"selle"|"mixte"), changedAt? (ISO)
+- sieste    : startAt? (ISO), endAt? (ISO)
+- medic     : name (REQUIS), doseMl?, takenAt? (ISO)
+- admin     : kind (REQUIS), dueDate? (ISO), assignee?
 - jalon     : category ("premiere-fois"|"sante"|"croissance"|"autre"), citation?
-- lecture   : title (REQUIS), durationMin?, source?
+- lecture   : title (REQUIS), source?
 - note      : text (REQUIS)
-- symptome  : description (REQUIS), severity ("info"|"warn"|"alert", défaut "info"), measuredValue?, measuredUnit?
+- symptome  : description (REQUIS), severity ("info"|"warn"|"alert")
+
+assignee — nom du parent à qui la tâche est destinée, tel que dicté ("Thomas",
+"Léa", "moi", "papa"…). Renseigne-le UNIQUEMENT si la dictée mentionne
+explicitement à qui c'est destiné ("rappelle à Thomas d'acheter du lait",
+"je m'en charge", "papa s'en occupe"). N'invente jamais d'assignation.
 
 Pour chaque entrée :
 - choisis le type le plus spécifique possible ;
@@ -62,11 +67,19 @@ Pour chaque entrée :
 - n'invente JAMAIS de valeur (volume, heure, poids, prix…). Préfère un champ
   absent à un champ inventé.
 
-DATES RELATIVES — résous-les depuis "Date courante" ci-dessous :
-- "demain" / "après-demain" / "lundi prochain" / "jeudi à 13h30" / "ce soir" /
-  "dans 3 jours" / "à la rentrée" → ISO 8601 complète (timezone Europe/Paris).
-- Heure manquante → omets l'heure (pas minuit par défaut).
-- Si tu ne peux pas dater avec certitude, omets le champ date.
+DATES & HEURES (TRÈS IMPORTANT) :
+Le parent parle en heure LOCALE Europe/Paris. Tu DOIS produire des chaînes
+ISO 8601 AVEC offset Europe/Paris explicite (ex "+02:00" en été / "+01:00"
+en hiver), JAMAIS le suffixe "Z" (UTC).
+
+Exemples corrects (en supposant 22 juin 2026, été = +02:00) :
+- "15h" / "à 15h" → "2026-06-22T15:00:00+02:00"
+- "demain à 8h30"  → "2026-06-23T08:30:00+02:00"
+- "jeudi 13h30"    → "2026-06-25T13:30:00+02:00"
+- "ce soir 20h"    → "2026-06-22T20:00:00+02:00"
+
+Heure manquante → omets le champ (pas minuit par défaut).
+Date incertaine → omets le champ entièrement.
 
 Ton de voix : ${ton}
 ${ctx}

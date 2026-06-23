@@ -25,6 +25,17 @@ export default async function ChatPage() {
   const householdId = member.household_id;
   const myInitial = member.initial ?? "L";
 
+  // Map household member user_ids → display info so we can show
+  // "par {creator}" / "pour {assignee}" on each card.
+  const { data: members } = await supabase
+    .from("household_members")
+    .select("user_id, initial, display_name, color")
+    .eq("household_id", householdId);
+  const memberById = new Map<string, { initial: string; name: string | null; color: string | null }>();
+  for (const m of members ?? []) {
+    memberById.set(m.user_id, { initial: m.initial ?? "?", name: m.display_name, color: m.color });
+  }
+
   // Pull last 50 messages and their created entries.
   const { data: messages } = await supabase
     .from("messages")
@@ -40,14 +51,20 @@ export default async function ChatPage() {
   const { data: entries } = entryIds.length
     ? await supabase
         .from("entries")
-        .select("id, type, payload, who, recommendation_id")
+        .select("id, type, payload, who, assigned_to, recommendation_id")
         .in("id", entryIds)
     : { data: [] as unknown[] };
 
-  const entryById = new Map<string, ReturnType<typeof asEntryShape>>();
+  const entryById = new Map<
+    string,
+    NonNullable<ReturnType<typeof asEntryShape>> & { assignedTo: string | null }
+  >();
   for (const e of entries ?? []) {
     const shape = asEntryShape(e);
-    if (shape) entryById.set(shape.id, shape);
+    if (!shape) continue;
+    const row = e as Record<string, unknown>;
+    const assignedTo = typeof row.assigned_to === "string" ? row.assigned_to : null;
+    entryById.set(shape.id, { ...shape, assignedTo });
   }
 
   const feed: FeedItem[] = [];
@@ -75,18 +92,39 @@ export default async function ChatPage() {
       for (const eid of linked) {
         const e = entryById.get(eid);
         if (!e) continue;
+        const creator = e.who ? memberById.get(e.who) : null;
+        const assignee = e.assignedTo ? memberById.get(e.assignedTo) : null;
         feed.push({
           kind: "card",
           id: e.id,
           entryType: e.type,
           title: entryTitle(e.type, e.payload),
           fields: extractFields(e.type, e.payload),
-          who: e.who ?? undefined,
+          creatorInitial: creator?.initial,
+          creatorName: creator?.name ?? null,
+          creatorColor: creator?.color ?? null,
+          assigneeInitial: assignee?.initial ?? null,
+          assigneeName: assignee?.name ?? null,
+          assigneeColor: assignee?.color ?? null,
           createdAt: m.created_at,
         });
       }
     }
   }
 
-  return <ChatStream householdId={householdId} initialFeed={feed} myInitial={myInitial} />;
+  const chatMembers = (members ?? []).map((m) => ({
+    userId: m.user_id,
+    initial: m.initial ?? "?",
+    name: m.display_name,
+    color: m.color,
+  }));
+
+  return (
+    <ChatStream
+      householdId={householdId}
+      initialFeed={feed}
+      myInitial={myInitial}
+      members={chatMembers}
+    />
+  );
 }

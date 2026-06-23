@@ -11,6 +11,7 @@ type CourseEntry = {
   id: string;
   payload: unknown;
   who: string | null;
+  assigned_to: string | null;
   status: "open" | "done" | "snoozed" | "ignored";
   created_at: string;
 };
@@ -19,11 +20,11 @@ type CourseEntry = {
  * B3 CoursesList — dense list of `course` entries, grouped by store.
  */
 export default async function CoursesPage() {
-  const { supabase, householdId } = await loadView();
+  const { supabase, householdId, members, memberByUserId } = await loadView();
 
   const { data: entries } = await supabase
     .from("entries")
-    .select("id, payload, who, status, created_at")
+    .select("id, payload, who, assigned_to, status, created_at")
     .eq("household_id", householdId)
     .eq("type", "course")
     .neq("status", "ignored")
@@ -86,10 +87,14 @@ export default async function CoursesPage() {
                       <div className="flex-1">
                         <EntryRow
                           id={e.id}
+                          type="course"
                           title={item}
                           meta={metaParts.length ? metaParts.join(" · ") : undefined}
-                          who={e.who ?? undefined}
+                          payload={p}
                           status={e.status}
+                          creator={e.who ? memberByUserId.get(e.who) ?? null : null}
+                          assignee={e.assigned_to ? memberByUserId.get(e.assigned_to) ?? null : null}
+                          members={members}
                         />
                       </div>
                       {urgency === "high" && (

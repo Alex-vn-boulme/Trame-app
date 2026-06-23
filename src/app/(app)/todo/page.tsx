@@ -12,11 +12,11 @@ export const dynamic = "force-dynamic";
  * B2 Todo — tout à faire, partagé entre co-parents. Grouped by category.
  */
 export default async function TodoPage() {
-  const { supabase, householdId } = await loadView();
+  const { supabase, householdId, members, memberByUserId } = await loadView();
 
   const { data: entries } = await supabase
     .from("entries")
-    .select("id, type, payload, who, status, due_at, created_at")
+    .select("id, type, payload, who, assigned_to, status, due_at, created_at")
     .eq("household_id", householdId)
     .eq("status", "open")
     .order("due_at", { ascending: true, nullsFirst: false })
@@ -75,11 +75,15 @@ export default async function TodoPage() {
                     <EntryRow
                       key={e.id}
                       id={e.id}
+                      type={t}
                       title={entryTitle(t, e.payload)}
                       meta={meta}
-                      who={typeof e.who === "string" ? e.who : undefined}
+                      payload={(e.payload as Record<string, unknown>) ?? {}}
                       status={e.status}
                       accentDot={CATEGORY_META[t].color}
+                      creator={typeof e.who === "string" ? memberByUserId.get(e.who) ?? null : null}
+                      assignee={typeof e.assigned_to === "string" ? memberByUserId.get(e.assigned_to) ?? null : null}
+                      members={members}
                     />
                   );
                 })}

@@ -10,23 +10,28 @@ import { Bubbles } from "./BubblesIndex";
 import { Composer } from "./Composer";
 import { CreatedCard } from "./CreatedCard";
 import { asEntryShape, entryTitle, extractFields, isEntryType } from "./extractFields";
-import type { ExtractResponse, FeedItem } from "./types";
+import type { ChatMember, ExtractResponse, FeedItem } from "./types";
 
 type Props = {
   householdId: string;
   initialFeed: FeedItem[];
   myInitial: string;
+  members: ChatMember[];
 };
 
 /**
  * The chat surface. Renders the chronological feed, the composer, and wires
  * realtime updates from Supabase + optimistic rendering for user messages.
  */
-export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
+export function ChatStream({ householdId, initialFeed, myInitial, members }: Props) {
   const [feed, setFeed] = useState<FeedItem[]>(initialFeed);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const memberById = useMemo(
+    () => new Map(members.map((m) => [m.userId, m] as const)),
+    [members],
+  );
 
   // Auto-scroll to bottom on new item.
   useEffect(() => {
@@ -81,6 +86,11 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
         (payload) => {
           const e = asEntryShape(payload.new);
           if (!e) return;
+          const raw = payload.new as Record<string, unknown>;
+          const whoId = typeof raw.who === "string" ? raw.who : null;
+          const assignedToId = typeof raw.assigned_to === "string" ? raw.assigned_to : null;
+          const creator = whoId ? memberById.get(whoId) : null;
+          const assignee = assignedToId ? memberById.get(assignedToId) : null;
           setFeed((prev) => {
             if (prev.some((f) => f.id === e.id)) return prev;
             return [
@@ -91,7 +101,12 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
                 entryType: e.type,
                 title: entryTitle(e.type, e.payload),
                 fields: extractFields(e.type, e.payload),
-                creatorInitial: undefined,
+                creatorInitial: creator?.initial,
+                creatorName: creator?.name ?? null,
+                creatorColor: creator?.color ?? null,
+                assigneeInitial: assignee?.initial ?? null,
+                assigneeName: assignee?.name ?? null,
+                assigneeColor: assignee?.color ?? null,
                 createdAt: new Date().toISOString(),
               },
             ];
@@ -197,8 +212,11 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
             : undefined,
         });
       }
+      const me = memberById.get(myInitial); // myInitial is actually user_id-keyed? fallback if not
+      const meInfo = members.find((m) => m.initial === myInitial);
       for (const [i, entry] of json.entries.entries()) {
         if (!isEntryType(entry.type)) continue;
+        const assignee = entry.assignedTo ? memberById.get(entry.assignedTo) : null;
         pushNew({
           kind: "card",
           id: json.entryIds[i] ?? `entry-${json.userMessageId}-${i}`,
@@ -206,6 +224,11 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
           title: entryTitle(entry.type, entry.payload),
           fields: extractFields(entry.type, entry.payload),
           creatorInitial: myInitial,
+          creatorName: meInfo?.name ?? me?.name ?? null,
+          creatorColor: meInfo?.color ?? me?.color ?? null,
+          assigneeInitial: assignee?.initial ?? null,
+          assigneeName: assignee?.name ?? null,
+          assigneeColor: assignee?.color ?? null,
           createdAt: now,
         });
       }
