@@ -75,7 +75,12 @@ export default async function DashboardPage() {
     .select("type, payload")
     .eq("household_id", householdId)
     .gte("created_at", todayStart.toISOString());
-  const todayBiberon = (todayEntries ?? []).filter((e) => e.type === "biberon").length;
+  const todayBiberons = (todayEntries ?? []).filter((e) => e.type === "biberon");
+  const todayBiberon = todayBiberons.length;
+  const todayBiberonMl = todayBiberons.reduce((sum, e) => {
+    const v = (e.payload as Record<string, unknown> | null)?.volumeMl;
+    return sum + (typeof v === "number" ? v : 0);
+  }, 0);
   const todayChange = (todayEntries ?? []).filter((e) => e.type === "change").length;
 
 
@@ -122,7 +127,10 @@ export default async function DashboardPage() {
             <span className="ml-auto font-mono text-[11px] text-sub">{hhmm(new Date())}</span>
           </div>
           <p className="font-serif text-[16px] leading-tight text-ink">
-            Tu as <span className="font-mono font-semibold">{todayBiberon}</span> biberon{todayBiberon > 1 ? "s" : ""} et{" "}
+            Tu as <span className="font-mono font-semibold">{todayBiberon}</span> biberon{todayBiberon > 1 ? "s" : ""}
+            {todayBiberonMl > 0 && (
+              <> (<span className="font-mono font-semibold">{todayBiberonMl}</span> ml)</>
+            )}{" "}et{" "}
             <span className="font-mono font-semibold">{todayChange}</span> change{todayChange > 1 ? "s" : ""} aujourd&apos;hui.
             {(openEntries?.length ?? 0) > 0 && (
               <> Il reste <span className="font-mono font-semibold">{openEntries!.length}</span> élément

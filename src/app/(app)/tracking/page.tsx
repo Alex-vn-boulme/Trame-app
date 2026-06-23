@@ -49,6 +49,10 @@ export default async function TrackingPage() {
     .limit(60);
 
   const biberons = (entries ?? []).filter((e) => e.type === "biberon");
+  const biberonsMl = biberons.reduce((sum, e) => {
+    const v = (e.payload as Record<string, unknown> | null)?.volumeMl;
+    return sum + (typeof v === "number" ? v : 0);
+  }, 0);
   const changes = (entries ?? []).filter((e) => e.type === "change");
   const siestes = (entries ?? []).filter((e) => e.type === "sieste");
 
@@ -67,7 +71,12 @@ export default async function TrackingPage() {
       <main className="px-4 pt-4">
         {/* 3 stat cards */}
         <div className="grid grid-cols-3 gap-2">
-          <StatCard icon="bottle" label="biberons" value={String(biberons.length)} color="#3f8fb3" />
+          <StatCard
+            icon="bottle"
+            label={biberonsMl > 0 ? `${biberons.length} biberons` : "biberons"}
+            value={biberonsMl > 0 ? `${biberonsMl} ml` : String(biberons.length)}
+            color="#3f8fb3"
+          />
           <StatCard icon="diaper" label="changes" value={String(changes.length)} color="var(--good)" />
           <StatCard
             icon="moon"

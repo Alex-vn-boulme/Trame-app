@@ -31,6 +31,10 @@ export default async function MorningHandoffPage() {
     .order("created_at", { ascending: true });
 
   const biberons = (entries ?? []).filter((e) => e.type === "biberon");
+  const biberonsMl = biberons.reduce((sum, e) => {
+    const v = (e.payload as Record<string, unknown> | null)?.volumeMl;
+    return sum + (typeof v === "number" ? v : 0);
+  }, 0);
   const changes = (entries ?? []).filter((e) => e.type === "change");
   const siestes = (entries ?? []).filter((e) => e.type === "sieste");
   const totalSleepMs = siestes.reduce((acc, s) => {
@@ -71,7 +75,10 @@ export default async function MorningHandoffPage() {
         {/* 3 stats card */}
         <Card>
           <div className="grid grid-cols-3 divide-x" style={{ borderColor: "var(--hair)" }}>
-            <Stat label="biberons" value={String(biberons.length)} />
+            <Stat
+              label={biberonsMl > 0 ? `${biberons.length} biberons` : "biberons"}
+              value={biberonsMl > 0 ? `${biberonsMl} ml` : String(biberons.length)}
+            />
             <Stat label="changes" value={String(changes.length)} />
             <Stat label="sommeil" value={totalSleepMs > 0 ? durationFr(totalSleepMs) : "—"} />
           </div>

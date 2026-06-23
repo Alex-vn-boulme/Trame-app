@@ -110,6 +110,57 @@ export async function updateEntryPayload(
   revalidateViews();
 }
 
+/** Force-insert a previously-skipped duplicate. The extract pipeline drops
+ *  near-duplicates by default; this lets the user override that decision
+ *  via a chip in the chat. */
+export async function forceInsertEntry(input: {
+  type: string;
+  payload: Record<string, unknown>;
+  assignedTo: string | null;
+  source: "vocal" | "text";
+}) {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) throw new Error("unauthorized");
+
+  const { data: member } = await supabase
+    .from("household_members")
+    .select("household_id")
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
+  if (!member?.household_id) throw new Error("no household");
+
+  const { data: child } = await supabase
+    .from("children")
+    .select("id")
+    .eq("household_id", member.household_id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: inserted, error } = await supabase
+    .from("entries")
+    .insert({
+      household_id: member.household_id,
+      child_id: child?.id ?? null,
+      type: input.type,
+      payload: input.payload,
+      who: userData.user.id,
+      assigned_to: input.assignedTo,
+      source: input.source,
+      confidence: 1,
+      recommendation_id: null,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("[forceInsertEntry]", error);
+    throw new Error(error.message);
+  }
+  revalidateViews();
+  return inserted.id;
+}
+
 /** Hard-delete an entry. RLS already restricts to household members. */
 export async function deleteEntry(entryId: string) {
   const supabase = await createClient();

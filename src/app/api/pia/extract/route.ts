@@ -252,14 +252,27 @@ export async function POST(request: Request) {
       }
     }
 
-    const skippedDuplicates: string[] = [];
+    type SkippedDup = {
+      type: RowToInsert["type"];
+      payload: Record<string, unknown>;
+      assignedTo: string | null;
+      source: "vocal" | "text";
+      reason: string; // human-readable, for the chat label
+    };
+    const skippedDuplicates: SkippedDup[] = [];
     const rowsToInsert: RowToInsert[] = [];
     for (const row of entryRows) {
       // Course dedup by item name.
       if (row.type === "course") {
         const item = normItem((row.payload as Record<string, unknown>).item);
         if (item && existingOpenCourseItems.has(item)) {
-          skippedDuplicates.push(`course:${item}`);
+          skippedDuplicates.push({
+            type: row.type,
+            payload: row.payload as Record<string, unknown>,
+            assignedTo: row.assigned_to,
+            source: row.source,
+            reason: `«${(row.payload as Record<string, unknown>).item}» déjà sur la liste`,
+          });
           continue;
         }
         if (item) existingOpenCourseItems.add(item); // also dedupe within this batch
@@ -290,7 +303,13 @@ export async function POST(request: Request) {
         .lte(`payload->>${cfg.key}`, hi)
         .limit(1);
       if ((near ?? []).length > 0) {
-        skippedDuplicates.push(`${row.type}@${ts}`);
+        skippedDuplicates.push({
+          type: row.type,
+          payload: row.payload as Record<string, unknown>,
+          assignedTo: row.assigned_to,
+          source: row.source,
+          reason: `un ${row.type} déjà noté à proximité de cet horaire`,
+        });
         continue;
       }
       rowsToInsert.push(row);
@@ -312,11 +331,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const dupNote =
-      skippedDuplicates.length > 0
-        ? ` (déjà noté il y a peu — j'ignore le doublon)`
-        : "";
-    const finalReply = extraction.assistantReply + dupNote;
+    const finalReply = extraction.assistantReply;
 
     const { data: piaMsg } = await supabase
       .from("messages")
@@ -342,6 +357,7 @@ export async function POST(request: Request) {
         assignedTo: r.assigned_to,
       })),
       entryIds: insertedIds,
+      skippedDuplicates,
     });
   } catch (err) {
     console.error("[pia/extract] unhandled", err);

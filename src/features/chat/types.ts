@@ -28,7 +28,25 @@ export type FeedItem =
       createdAt: string;
     }
   | { kind: "pending-user"; id: string; text: string; voice: boolean; createdAt: string }
-  | { kind: "pending-pia"; id: string; createdAt: string };
+  | { kind: "pending-pia"; id: string; createdAt: string }
+  | {
+      kind: "dup-confirm";
+      id: string;
+      entryType: EntryType;
+      reason: string;
+      payload: Record<string, unknown>;
+      assignedTo: string | null;
+      source: "vocal" | "text";
+      createdAt: string;
+    };
+
+export type SkippedDuplicate = {
+  type: EntryType;
+  payload: Record<string, unknown>;
+  assignedTo: string | null;
+  source: "vocal" | "text";
+  reason: string;
+};
 
 export type ExtractResponse = {
   userMessageId: string;
@@ -43,4 +61,5 @@ export type ExtractResponse = {
     assignedTo?: string | null;
   }>;
   entryIds: string[];
+  skippedDuplicates?: SkippedDuplicate[];
 };

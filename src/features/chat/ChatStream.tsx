@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Bubbles } from "./BubblesIndex";
 import { Composer } from "./Composer";
 import { CreatedCard } from "./CreatedCard";
+import { DupConfirmCard } from "./DupConfirmCard";
 import { asEntryShape, entryTitle, extractFields, isEntryType } from "./extractFields";
 import type { ChatMember, ExtractResponse, FeedItem } from "./types";
 
@@ -232,8 +233,24 @@ export function ChatStream({ householdId, initialFeed, myInitial, members }: Pro
           createdAt: now,
         });
       }
+      for (const [i, dup] of (json.skippedDuplicates ?? []).entries()) {
+        pushNew({
+          kind: "dup-confirm",
+          id: `dup-${json.userMessageId}-${i}`,
+          entryType: dup.type,
+          reason: dup.reason,
+          payload: dup.payload,
+          assignedTo: dup.assignedTo,
+          source: dup.source,
+          createdAt: now,
+        });
+      }
       return next;
     });
+  }
+
+  function removeDup(id: string) {
+    setFeed((prev) => prev.filter((f) => f.id !== id));
   }
 
   const groupedByDate = useMemo(() => {
@@ -306,7 +323,7 @@ export function ChatStream({ householdId, initialFeed, myInitial, members }: Pro
                 const chained =
                   !!next && next.kind === it.kind && next.kind === "user";
                 return (
-                  <FeedItemView key={it.id} item={it} showTime={!chained} />
+                  <FeedItemView key={it.id} item={it} showTime={!chained} onResolveDup={removeDup} />
                 );
               })}
             </div>
@@ -330,7 +347,15 @@ export function ChatStream({ householdId, initialFeed, myInitial, members }: Pro
   );
 }
 
-function FeedItemView({ item, showTime = true }: { item: FeedItem; showTime?: boolean }) {
+function FeedItemView({
+  item,
+  showTime = true,
+  onResolveDup,
+}: {
+  item: FeedItem;
+  showTime?: boolean;
+  onResolveDup?: (id: string) => void;
+}) {
   switch (item.kind) {
     case "user":
       return (
@@ -367,6 +392,17 @@ function FeedItemView({ item, showTime = true }: { item: FeedItem; showTime?: bo
           fields={item.fields}
           creator={item.creatorInitial ? { initial: item.creatorInitial, name: item.creatorName ?? null, color: item.creatorColor ?? null } : undefined}
           assignee={item.assigneeInitial ? { initial: item.assigneeInitial, name: item.assigneeName ?? null, color: item.assigneeColor ?? null } : null}
+        />
+      );
+    case "dup-confirm":
+      return (
+        <DupConfirmCard
+          type={item.entryType}
+          reason={item.reason}
+          payload={item.payload}
+          assignedTo={item.assignedTo}
+          source={item.source}
+          onResolved={() => onResolveDup?.(item.id)}
         />
       );
   }
