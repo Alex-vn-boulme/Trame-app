@@ -1,21 +1,23 @@
-import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/design/icons";
 import type { ParentKey } from "@/design/people";
 
 /**
  * UserBubble — right-aligned, accent fill, BR-tip flat.
  * Voice = optional mic icon prefix + " · dicté" meta.
+ * `showTime` hides the meta line on chained messages from the same sender.
  */
 export function UserBubble({
   children,
   time,
   voice,
-  who = "L",
+  who: _who = "L",
+  showTime = true,
 }: {
   children: React.ReactNode;
   time: string;
   voice?: boolean;
   who?: ParentKey;
+  showTime?: boolean;
 }) {
   return (
     <div className="flex flex-col items-end gap-1">
@@ -32,13 +34,14 @@ export function UserBubble({
         {voice && <Icon name="mic" size={13} className="opacity-80" />}
         <span>{children}</span>
       </div>
-      <div className="mr-1 flex items-center gap-1">
-        <Avatar who={who} size={12} />
-        <span className="font-mono text-[10px] text-sub">
-          {time}
-          {voice ? " · dicté" : ""}
-        </span>
-      </div>
+      {showTime && (
+        <div className="mr-1 flex items-center gap-1">
+          <span className="font-mono text-[10px] text-sub">
+            {time}
+            {voice ? " · dicté" : ""}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

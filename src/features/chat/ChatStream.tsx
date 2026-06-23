@@ -91,7 +91,7 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
                 entryType: e.type,
                 title: entryTitle(e.type, e.payload),
                 fields: extractFields(e.type, e.payload),
-                who: e.who ?? undefined,
+                creatorInitial: undefined,
                 createdAt: new Date().toISOString(),
               },
             ];
@@ -168,19 +168,26 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
     setFeed((prev) => {
       const withoutPending = prev.filter((f) => f.id !== pendingId && f.id !== pendingPiaId);
       const now = new Date().toISOString();
-      const next: FeedItem[] = [
-        ...withoutPending,
-        {
-          kind: "user",
-          id: json.userMessageId,
-          text: userText,
-          createdAt: now,
-          voice,
-          who: myInitial,
-        },
-      ];
+      // The realtime channel may have already inserted some of these rows
+      // before the fetch resolved — only append ids we don't already have,
+      // otherwise the message renders twice.
+      const seen = new Set(withoutPending.map((f) => f.id));
+      const next = [...withoutPending];
+      const pushNew = (item: FeedItem) => {
+        if (seen.has(item.id)) return;
+        seen.add(item.id);
+        next.push(item);
+      };
+      pushNew({
+        kind: "user",
+        id: json.userMessageId,
+        text: userText,
+        createdAt: now,
+        voice,
+        who: myInitial,
+      });
       if (json.assistantReply) {
-        next.push({
+        pushNew({
           kind: "pia",
           id: json.assistantMessageId ?? `assistant-${json.userMessageId}`,
           text: json.assistantReply,
@@ -192,13 +199,13 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
       }
       for (const [i, entry] of json.entries.entries()) {
         if (!isEntryType(entry.type)) continue;
-        next.push({
+        pushNew({
           kind: "card",
           id: json.entryIds[i] ?? `entry-${json.userMessageId}-${i}`,
           entryType: entry.type,
           title: entryTitle(entry.type, entry.payload),
           fields: extractFields(entry.type, entry.payload),
-          who: myInitial,
+          creatorInitial: myInitial,
           createdAt: now,
         });
       }
@@ -269,9 +276,16 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
           {groupedByDate.map((g) => (
             <div key={g.day} className="flex flex-col gap-2.5">
               <Bubbles.DateSeparator label={g.day} />
-              {g.items.map((it) => (
-                <FeedItemView key={it.id} item={it} />
-              ))}
+              {g.items.map((it, idx) => {
+                const next = g.items[idx + 1];
+                // Show the time meta only on the last bubble of a consecutive
+                // run from the same sender — chained messages stay clean.
+                const chained =
+                  !!next && next.kind === it.kind && next.kind === "user";
+                return (
+                  <FeedItemView key={it.id} item={it} showTime={!chained} />
+                );
+              })}
             </div>
           ))}
         </div>
@@ -293,11 +307,11 @@ export function ChatStream({ householdId, initialFeed, myInitial }: Props) {
   );
 }
 
-function FeedItemView({ item }: { item: FeedItem }) {
+function FeedItemView({ item, showTime = true }: { item: FeedItem; showTime?: boolean }) {
   switch (item.kind) {
     case "user":
       return (
-        <Bubbles.UserBubble time={hhmm(new Date(item.createdAt))} voice={item.voice} who={item.who === "T" ? "T" : "L"}>
+        <Bubbles.UserBubble time={hhmm(new Date(item.createdAt))} voice={item.voice} who={item.who === "T" ? "T" : "L"} showTime={showTime}>
           {item.text}
         </Bubbles.UserBubble>
       );
@@ -324,10 +338,12 @@ function FeedItemView({ item }: { item: FeedItem }) {
     case "card":
       return (
         <CreatedCard
+          entryId={item.id}
           type={item.entryType}
           title={item.title}
           fields={item.fields}
-          who={item.who}
+          creator={item.creatorInitial ? { initial: item.creatorInitial, name: item.creatorName ?? null, color: item.creatorColor ?? null } : undefined}
+          assignee={item.assigneeInitial ? { initial: item.assigneeInitial, name: item.assigneeName ?? null, color: item.assigneeColor ?? null } : null}
         />
       );
   }
