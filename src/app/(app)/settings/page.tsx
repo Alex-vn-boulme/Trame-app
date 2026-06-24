@@ -1,6 +1,7 @@
 import { Card } from "@/components/Card";
 import { ScreenHeader } from "@/features/views/ScreenHeader";
 import { SettingsForm } from "./SettingsForm";
+import { signOutAction } from "./logout-action";
 import { loadView } from "@/features/views/loadView";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +95,22 @@ export default async function SettingsPage() {
             contacte ton pédiatre ou le 15.
           </p>
         </Card>
+
+        {/* Account */}
+        <section>
+          <h2 className="mb-2 font-sans text-[11px] uppercase tracking-[0.04em] text-sub">
+            Compte
+          </h2>
+          <form action={signOutAction}>
+            <button
+              type="submit"
+              className="block w-full rounded-xl bg-card px-3 py-2.5 text-left font-sans text-[13.5px] text-ink"
+              style={{ border: "0.5px solid var(--hair)" }}
+            >
+              Se déconnecter
+            </button>
+          </form>
+        </section>
 
         {/* RGPD */}
         <section>
