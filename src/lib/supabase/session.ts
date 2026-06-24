@@ -46,7 +46,10 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/dev") ||
     path === "/" ||
     path.startsWith("/_next") ||
-    path.startsWith("/api/auth");
+    path.startsWith("/api/auth") ||
+    // Vercel Cron endpoints self-authenticate via `Bearer ${CRON_SECRET}`.
+    // They run with no Supabase session, so the proxy must not redirect them.
+    path.startsWith("/api/cron");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
